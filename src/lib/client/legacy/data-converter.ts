@@ -1,13 +1,13 @@
 import {
     CommonMessageData,
-    Emote,
+    EmoteModel,
+    EmojiEmoteWithIndex,
     User,
     WebcastChatMessage,
     WebcastEmoteChatMessage,
     WebcastLinkMicBattle,
     WebcastQuestionNewMessage,
-    WebcastRoomUserSeqMessage,
-    WebcastSubEmote
+    WebcastRoomUserSeqMessage
 } from 'tiktok-live-proto/v3';
 import { WebcastEventMessage } from '@/types';
 
@@ -66,14 +66,15 @@ export function simplifyObject(
         }
         case 'WebcastLinkMicBattle': {
             originalObject = simplify<WebcastLinkMicBattle>((webcastObject) => {
-                const battleUsers = [];
+                const battleUsers: any[] = [];
 
-                Object.values(webcastObject.anchorInfo).forEach((anchor) => {
-                    if (anchor.user) {
-                        // @ts-ignore
-                        battleUsers.push(getUserAttributes(anchor.user));
-                    }
-                });
+                if (Array.isArray(webcastObject.anchorsInfo)) {
+                    webcastObject.anchorsInfo.forEach((anchor) => {
+                        if (anchor.value?.user) {
+                            battleUsers.push(getUserAttributes(anchor.value.user as any));
+                        }
+                    });
+                }
 
                 webcastObject.battleUsers = battleUsers;
                 return webcastObject;
@@ -128,12 +129,12 @@ export function simplifyObject(
             break;
         }
         case 'WebcastChatMessage': {
-            originalObject = simplify<WebcastChatMessage & { emotes: WebcastSubEmote & any }>((webcastObject) => {
-                webcastObject.emotes = webcastObject.emotes.map((emote: WebcastSubEmote) => (
+            originalObject = simplify<WebcastChatMessage & { emotes: any }>((webcastObject) => {
+                webcastObject.emotes = webcastObject.emotes.map((emote: EmojiEmoteWithIndex) => (
                     {
                         emoteId: emote.emote?.emoteId,
-                        emoteImageUrl: emote.emote?.image?.imageUrl,
-                        placeInComment: emote.placeInComment
+                        emoteImageUrl: emote.emote?.image?.urlList?.[0],
+                        placeInComment: emote.index
                     }
                 ));
                 return webcastObject;
@@ -141,11 +142,11 @@ export function simplifyObject(
             break;
         }
         case 'WebcastEmoteChatMessage': {
-            originalObject = simplify<WebcastEmoteChatMessage & { emotes: WebcastSubEmote & any }>((webcastObject) => {
-                webcastObject.emotes = webcastObject.emoteList.map((emote: Emote) => (
+            originalObject = simplify<WebcastEmoteChatMessage & { emotes: any }>((webcastObject) => {
+                webcastObject.emotes = webcastObject.emoteList.map((emote: EmoteModel) => (
                     {
                         emoteId: emote.emoteId,
-                        emoteImageUrl: emote.image?.url[0]
+                        emoteImageUrl: emote.image?.urlList?.[0]
                     }
                 ));
                 return webcastObject;
@@ -161,19 +162,26 @@ export function simplifyObject(
 function getUserAttributes(webcastUser: Partial<User>): Record<string, any> {
     webcastUser ||= {};
 
+    const user: any = webcastUser;
+    const userId = user.userId?.toString() || user.id?.toString();
+    const uniqueId = user.displayId !== '' ? user.displayId : (user.uniqueId !== '' ? user.uniqueId : undefined);
+    const nickname = user.nickname !== '' ? user.nickname : (user.nickName !== '' ? user.nickName : undefined);
+    const profileUrls = user.avatarThumb?.urlList || user.profilePicture?.url;
+    const badgeList = user.badgeList || user.badges;
+
     const userAttributes: Record<string, any> = {
-        userId: webcastUser.userId?.toString(),
-        secUid: webcastUser.secUid?.toString(),
-        uniqueId: webcastUser.uniqueId !== '' ? webcastUser.uniqueId : undefined,
-        nickname: webcastUser.nickname !== '' ? webcastUser.nickname : undefined,
-        profilePictureUrl: getPreferredPictureFormat(webcastUser.profilePicture?.url),
-        followRole: webcastUser.followInfo?.followStatus,
-        userBadges: mapBadges(webcastUser.badges), // todo fix struct
-        userSceneTypes: webcastUser.badges?.map((x) => x?.badgeScene || 0),
+        userId,
+        secUid: user.secUid?.toString(),
+        uniqueId,
+        nickname,
+        profilePictureUrl: getPreferredPictureFormat(profileUrls),
+        followRole: user.followInfo?.followStatus,
+        userBadges: mapBadges(badgeList),
+        userSceneTypes: badgeList?.map((x: any) => x?.sceneType || x?.badgeScene || 0),
         userDetails: {
-            createTime: webcastUser.createTime?.toString(),
-            bioDescription: webcastUser.bioDescription,
-            profilePictureUrls: webcastUser.profilePicture?.url
+            createTime: user.createTime?.toString(),
+            bioDescription: user.bioDescription,
+            profilePictureUrls: profileUrls
         }
     };
 
